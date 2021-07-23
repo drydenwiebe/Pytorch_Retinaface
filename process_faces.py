@@ -65,6 +65,18 @@ def load_model(model, pretrained_path, load_to_cpu):
     return model
 
 
+def load_image(x):
+    x = np.frombuffer(x, np.uint8)
+    x = cv2.imdecode(x, -1)
+    x = cv2.resize(x, (256, 144))
+    x = np.float32(x)
+    x = x / 255.0
+    x = x.transpose(2, 0, 1)
+    # x = torch.from_numpy(x)
+    # x = self.grayscale(x)
+    return x
+
+
 if __name__ == '__main__':
     torch.set_grad_enabled(False)
     cfg = None
@@ -73,7 +85,7 @@ if __name__ == '__main__':
     elif args.network == "resnet50":
         cfg = cfg_re50
     # net and model
-    net = RetinaFace(cfg=cfg, phase = 'test')
+    net = RetinaFace(cfg=cfg, phase='test')
     net = load_model(net, args.trained_model, args.cpu)
     net.eval()
     print('Finished loading model!')
@@ -84,10 +96,27 @@ if __name__ == '__main__':
 
     resize = 1
 
-    with h5py.File(self.v_f, "r") as f:
+    face_file = h5py.File('./faces.hdf5', 'w')
+
+    with h5py.File(args.v_f, 'r') as f:
         for i, vid in enumerate(f.keys()):
             # Compute the face locations
-            
+            for j, frame in enumerate(range(f[vid].shape)):
+                img = load_image(f[vid][frame])
+
+                im_height, im_width, _ = img.shape
+                scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
+                img -= (104, 117, 123)
+                img = img.transpose(2, 0, 1)
+                img = torch.from_numpy(img).unsqueeze(0)
+                img = img.to(device)
+                scale = scale.to(device)
+
+                tic = time.time()
+                loc, conf, landms = net(img)  # forward pass
+                print('net forward time: {:.4f}'.format(time.time() - tic))
+
+    face_file.close()
 
     # testing begin
     for i in range(100):
@@ -172,4 +201,3 @@ if __name__ == '__main__':
 
             name = "test.jpg"
             cv2.imwrite(name, img_raw)
-
